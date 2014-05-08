@@ -16,7 +16,8 @@ from lxml import html
 
 from PyQt4.Qt import QUrl
 
-from calibre import browser, url_slash_cleaner
+from calibre import url_slash_cleaner
+from calibre.web.jsbrowser.browser import Browser
 from calibre.gui2 import open_url
 from calibre.gui2.store import StorePlugin
 from calibre.gui2.store.basic_config import BasicStoreConfig
@@ -51,7 +52,7 @@ class WoblinkStore(BasicStoreConfig, StorePlugin):
             else:
                 url += '&limit=20'
 
-        br = browser()
+        br = Browser()
 
         counter = max_results
         with closing(br.open(url, timeout=timeout)) as f:
