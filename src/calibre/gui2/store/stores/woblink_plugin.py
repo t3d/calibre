@@ -17,12 +17,13 @@ from lxml import html
 from PyQt4.Qt import QUrl
 
 from calibre import url_slash_cleaner
-from calibre.web.jsbrowser.browser import Browser
 from calibre.gui2 import open_url
 from calibre.gui2.store import StorePlugin
 from calibre.gui2.store.basic_config import BasicStoreConfig
 from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
+
+from calibre.utils.ipc.simple_worker import fork_job
 
 class WoblinkStore(BasicStoreConfig, StorePlugin):
 
@@ -44,6 +45,18 @@ class WoblinkStore(BasicStoreConfig, StorePlugin):
             d.set_tags(self.config.get('tags', ''))
             d.exec_()
 
+    def get_results(query, timeout):
+        from calibre.web.jsbrowser.browser import Browser, Timeout
+        browser = Browser(default_timeout=timeout)
+        browser.visit('http://woblink.com/')
+        form = browser.select_form('#search-form')
+        form['query'] = query
+        browser.submit('#submit')
+        try:
+            wait_for_load(browser)
+        except Timeout:
+            raise ValueError('Failed to search woblink.com.')
+
     def search(self, query, max_results=10, timeout=60):
         url = 'http://woblink.com/katalog-ebooki?query=' + urllib.quote_plus(query.encode('utf-8'))
         if max_results > 10:
@@ -52,10 +65,9 @@ class WoblinkStore(BasicStoreConfig, StorePlugin):
             else:
                 url += '&limit=20'
 
-        br = Browser()
-
         counter = max_results
-        with closing(br.open(url, timeout=timeout)) as f:
+        #with closing(br.open(url, timeout=timeout)) as f:
+        with closing(fork_job('calibre.gui2.store.stores.woblink_plugin','get_results', (query, timeout), no_output=True)) as f:
             doc = html.fromstring(f.read())
             for data in doc.xpath('//div[@class="nw_katalog_lista_ksiazka "]'):
                 if counter <= 0:
