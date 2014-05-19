@@ -32,7 +32,7 @@ import urllib
 def get_results(url, timeout):
     browser = Browser(default_timeout=timeout)
     browser.visit(url)
-    browser.show_browser()
+    browser.wait_for_element('#nw_content_list')
     return browser.html
     '''
 
