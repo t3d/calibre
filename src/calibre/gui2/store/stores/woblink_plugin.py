@@ -83,9 +83,8 @@ class WoblinkStore(BasicStoreConfig, StorePlugin):
             cover_url = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_okladka nw_okladka"]/a[1]/img/@src'))
             title = ''.join(data.xpath('.//h2[@class="nw_katalog_lista_ksiazka_detale_tytul"]/a[1]/text()'))
             author = ', '.join(data.xpath('.//p[@class="nw_katalog_lista_ksiazka_detale_autor"]/a/text()'))
-            price = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_opcjezakupu_cena"]/span/text()'))
-            price = re.sub('\.', ',', price)
-            formats = ', '.join(data.xpath('.//p[@class="nw_katalog_lista_ksiazka_detale_formaty"]/span/text()'))
+            price = ''.join(data.xpath('.//div[@class="nw_opcjezakupu_cena"]/text()'))
+            formats = ', '.join(data.xpath('.//p[@class="nw_katalog_lista_ksiazka_detale_format"]/span/text()'))
 
             s = SearchResult()
             s.cover_url = 'http://woblink.com' + cover_url
@@ -95,7 +94,7 @@ class WoblinkStore(BasicStoreConfig, StorePlugin):
             s.detail_item = id.strip()
             s.formats = formats
 
-            if 'EPUB DRM' in formats:
+            if 'DRM' in formats:
                 s.drm = SearchResult.DRM_LOCKED
 
                 counter -= 1
