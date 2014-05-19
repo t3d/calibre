@@ -23,21 +23,16 @@ from calibre.gui2.store.basic_config import BasicStoreConfig
 from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
 
-from calibre.utils.ipc.simple_worker import fork_job
+from calibre.utils.ipc.simple_worker import fork_job, WorkerError
 
 js_browser = '''
 from calibre.web.jsbrowser.browser import Browser, Timeout
+import urllib
 
-def get_results(self, query, timeout):
+def get_results(url, timeout):
     browser = Browser(default_timeout=timeout)
-    browser.visit('http://woblink.com/')
-    form = browser.select_form('#search-form')
-    form['query'] = query
-    browser.submit('#submit')
-    try:
-        wait_for_load(browser)
-    except Timeout:
-        raise ValueError('Failed to search woblink.com.')
+    browser.visit(url)
+    browser.show_browser()
     return browser.html
     '''
 
@@ -71,40 +66,43 @@ class WoblinkStore(BasicStoreConfig, StorePlugin):
                 url += '&limit=20'
 
         counter = max_results
-        #with closing(br.open(url, timeout=timeout)) as f:
-        with closing(fork_job(js_browser,'get_results', (query, timeout,), module_is_source_code=True)) as f:
-            doc = html.fromstring(f.read())
-            for data in doc.xpath('//div[@class="nw_katalog_lista_ksiazka "]'):
-                if counter <= 0:
-                    break
 
-                id = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_okladka nw_okladka"]/a[1]/@href'))
-                if not id:
-                    continue
+        try:
+          results = fork_job(js_browser,'get_results', (url, timeout,), module_is_source_code=True)
+        except WorkerError as e:
+          raise Exception('Could not get results: %s'%e.orig_tb)
+        doc = html.fromstring(str(results))
+        for data in doc.xpath('//div[@class="nw_katalog_lista_ksiazka"]'):
+            if counter <= 0:
+                break
 
-                cover_url = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_okladka nw_okladka"]/a[1]/img/@src'))
-                title = ''.join(data.xpath('.//h2[@class="nw_katalog_lista_ksiazka_detale_tytul"]/a[1]/text()'))
-                author = ', '.join(data.xpath('.//p[@class="nw_katalog_lista_ksiazka_detale_autor"]/a/text()'))
-                price = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_opcjezakupu_cena"]/span/text()'))
-                price = re.sub('\.', ',', price)
-                formats = ', '.join(data.xpath('.//p[@class="nw_katalog_lista_ksiazka_detale_formaty"]/span/text()'))
+            id = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_okladka nw_okladka"]/a[1]/@href'))
+            if not id:
+                continue
 
-                s = SearchResult()
-                s.cover_url = 'http://woblink.com' + cover_url
-                s.title = title.strip()
-                s.author = author.strip()
-                s.price = price + ' zł'
-                s.detail_item = id.strip()
-                s.formats = formats
+            cover_url = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_okladka nw_okladka"]/a[1]/img/@src'))
+            title = ''.join(data.xpath('.//h2[@class="nw_katalog_lista_ksiazka_detale_tytul"]/a[1]/text()'))
+            author = ', '.join(data.xpath('.//p[@class="nw_katalog_lista_ksiazka_detale_autor"]/a/text()'))
+            price = ''.join(data.xpath('.//div[@class="nw_katalog_lista_ksiazka_opcjezakupu_cena"]/span/text()'))
+            price = re.sub('\.', ',', price)
+            formats = ', '.join(data.xpath('.//p[@class="nw_katalog_lista_ksiazka_detale_formaty"]/span/text()'))
 
-                if 'EPUB DRM' in formats:
-                    s.drm = SearchResult.DRM_LOCKED
+            s = SearchResult()
+            s.cover_url = 'http://woblink.com' + cover_url
+            s.title = title.strip()
+            s.author = author.strip()
+            s.price = price + ' zł'
+            s.detail_item = id.strip()
+            s.formats = formats
 
-                    counter -= 1
-                    yield s
-                else:
-                    s.drm = SearchResult.DRM_UNLOCKED
+            if 'EPUB DRM' in formats:
+                s.drm = SearchResult.DRM_LOCKED
 
-                    counter -= 1
-                    yield s
+                counter -= 1
+                yield s
+            else:
+                s.drm = SearchResult.DRM_UNLOCKED
+
+                counter -= 1
+                yield s
 
